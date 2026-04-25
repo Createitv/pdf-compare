@@ -56,6 +56,6 @@ jobs:
           tagName: ${{ github.ref_name }}
           releaseName: "PDF Compare ${{ github.ref_name }}"
           releaseBody: "自动构建产物。下载对应平台安装包即可使用。"
-          releaseDraft: true
+          releaseDraft: false
           prerelease: false
           args: ${{ matrix.args }}
