@@ -35,6 +35,20 @@ jobs:
           version: 10
           run_install: false
 
+      - name: Sync version from tag
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: bash
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          echo "Setting package version to $VERSION"
+          node -e "const fs=require('fs'); const f='src-tauri/tauri.conf.json'; const o=JSON.parse(fs.readFileSync(f,'utf8')); o.version='$VERSION'; fs.writeFileSync(f, JSON.stringify(o,null,2)+'\n');"
+          node -e "const fs=require('fs'); const f='src-tauri/Cargo.toml'; let s=fs.readFileSync(f,'utf8'); s=s.replace(/^version\s*=\s*\"[^\"]*\"/m, 'version = \"$VERSION\"'); fs.writeFileSync(f, s);"
+          node -e "const fs=require('fs'); const f='src-tauri/algo/Cargo.toml'; let s=fs.readFileSync(f,'utf8'); s=s.replace(/^version\s*=\s*\"[^\"]*\"/m, 'version = \"$VERSION\"'); fs.writeFileSync(f, s);"
+          node -e "const fs=require('fs'); const f='package.json'; const o=JSON.parse(fs.readFileSync(f,'utf8')); o.version='$VERSION'; fs.writeFileSync(f, JSON.stringify(o,null,2)+'\n');"
+          echo '--- updated ---'
+          grep -E '^version' src-tauri/Cargo.toml src-tauri/algo/Cargo.toml || true
+          grep '"version"' src-tauri/tauri.conf.json package.json || true
+
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
         with:
