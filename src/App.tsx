@@ -51,6 +51,12 @@ export default function App() {
     try {
       const r = await cmpInvoke(allDir, sentDir);
       setResult(r);
+      if (r.extra.length > 0) {
+        // 意料之外：已发送 ⊄ 全部
+        window.alert(
+          `⚠️ 检测到 ${r.extra.length} 个文件存在于「已发送」中，但在「全部」里找不到对应项。\n\n这通常意味着：\n· 选错了文件夹\n· 命名规则不一致\n· 已发送的内容来源不止一处\n\n请滚动到下方「多余清单」核对。`,
+        );
+      }
     } catch (e) {
       setError(String(e));
     } finally {
@@ -213,15 +219,6 @@ export default function App() {
             </div>
           )}
 
-          {result && result.extra.length > 0 && (
-            <div className="flex items-start gap-2 rounded-md border border-zinc-900 bg-white px-3 py-2 text-xs text-zinc-900">
-              <AlertTriangle size={14} className="mt-0.5 shrink-0" />
-              <span>
-                已发送文件夹中有 <b>{result.extra.length}</b> 个文件在「全部文件夹」中没有对应项 —— 这意味着两侧并非严格的「子集」关系，可能选错了文件夹或文件命名规则不同。详情见下方「多余清单」。
-              </span>
-            </div>
-          )}
-
           {error && (
             <div className="rounded-md border border-zinc-900 bg-zinc-900 px-3 py-2 text-xs text-white">
               错误：{error}
@@ -229,20 +226,44 @@ export default function App() {
           )}
         </section>
 
-        <section className="grid min-h-0 grid-cols-1 gap-4 md:grid-cols-2">
+        <section className="grid min-h-0 grid-rows-[1fr_auto] gap-4">
           <ResultList
-            title="缺失清单（左有右无）"
+            title="缺失清单"
             count={result?.missing.length ?? 0}
             entries={result?.missing ?? []}
             emptyText={result ? "无缺失" : "尚未对比"}
           />
-          <ResultList
-            title="多余清单（右有左无）"
-            count={result?.extra.length ?? 0}
-            entries={result?.extra ?? []}
-            emptyText={result ? "无多余 ✓ 已发送是全部的子集" : "尚未对比"}
-            tone={result && result.extra.length > 0 ? "warn" : "neutral"}
-          />
+
+          {result && result.extra.length > 0 && (
+            <div className="rounded-lg border-2 border-zinc-900 bg-white shadow-[0_-2px_0_0_rgba(0,0,0,0.04)]">
+              <div className="flex items-center gap-2 border-b-2 border-zinc-900 bg-zinc-900 px-3 py-2 text-white">
+                <AlertTriangle size={14} className="shrink-0" />
+                <span className="text-sm font-semibold">
+                  ⚠ 多余清单 — 已发送中存在「全部」里没有的文件
+                </span>
+                <span className="ml-auto rounded bg-white px-1.5 py-0.5 font-mono text-xs text-zinc-900">
+                  {result.extra.length}
+                </span>
+              </div>
+              <div className="px-3 py-2 text-xs text-zinc-700">
+                这通常是意料之外的情况：可能选错了文件夹，或这些文件来自其他来源。请逐一核对：
+              </div>
+              <div className="max-h-48 overflow-auto border-t border-zinc-200">
+                {result.extra.map((e) => (
+                  <div
+                    key={e.abs_path}
+                    className="flex items-center gap-3 border-b border-zinc-100 px-3 py-1.5 font-mono text-xs last:border-b-0"
+                    title={e.abs_path}
+                  >
+                    <span className="shrink-0 rounded bg-zinc-900 px-1.5 py-0.5 text-[10px] text-white">
+                      {e.key}
+                    </span>
+                    <span className="truncate text-zinc-700">{e.full_name}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </section>
       </main>
     </div>
