@@ -1,0 +1,25 @@
+node_modules
+dist
+dist-ssr
+*.local
+
+# Editor
+.vscode/*
+!.vscode/extensions.json
+.idea
+.DS_Store
+
+# Tauri / Rust
+src-tauri/target
+src-tauri/algo/target
+src-tauri/gen
+src-tauri/Cargo.lock
+
+# Logs
+*.log
+src-tauri/algo/Cargo.lock
+
+# tsc build artifacts
+*.tsbuildinfo
+vite.config.d.ts
+vite.config.js

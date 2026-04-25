@@ -1,0 +1,10 @@
+[package]
+name = "pdfcmp-algo"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+walkdir = "2"
+regex = "1"
+once_cell = "1"
