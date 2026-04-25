@@ -24,8 +24,10 @@ export default function App() {
   const [progress, setProgress] = useState<CopyProgress | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [successAt, setSuccessAt] = useState<number>(0);
+  const [needOutHint, setNeedOutHint] = useState(false);
   const copyCountRef = useRef(0);
   const successTimerRef = useRef<number | null>(null);
+  const hintTimerRef = useRef<number | null>(null);
 
   useEffect(() => {
     let unlisten: (() => void) | null = null;
@@ -37,9 +39,17 @@ export default function App() {
     };
   }, []);
 
+  // 用户一旦选了输出文件夹，立即取消高亮提醒
+  useEffect(() => {
+    if (outDir && needOutHint) {
+      setNeedOutHint(false);
+      if (hintTimerRef.current) window.clearTimeout(hintTimerRef.current);
+    }
+  }, [outDir, needOutHint]);
+
   const canCompare = !!allDir && !!sentDir && status === "idle";
   const canCopy =
-    !!result && result.missing.length > 0 && !!outDir && status === "idle";
+    !!result && result.missing.length > 0 && status === "idle";
 
   async function runCompare() {
     if (!allDir || !sentDir) return;
@@ -64,8 +74,21 @@ export default function App() {
     }
   }
 
+  function flashOutputHint() {
+    setNeedOutHint(true);
+    if (hintTimerRef.current) window.clearTimeout(hintTimerRef.current);
+    hintTimerRef.current = window.setTimeout(
+      () => setNeedOutHint(false),
+      3500,
+    ) as unknown as number;
+  }
+
   async function runCopy() {
-    if (!result || !outDir) return;
+    if (!result) return;
+    if (!outDir) {
+      flashOutputHint();
+      return;
+    }
     if (copyCountRef.current > 0) {
       const ok = window.confirm(
         "本次会话已经复制过一次。是否再次复制？\n\n（已存在的文件会被自动跳过）",
@@ -134,6 +157,7 @@ export default function App() {
               value={outDir}
               onChange={setOutDir}
               disabled={status !== "idle"}
+              highlight={needOutHint}
             />
           </div>
 
@@ -186,6 +210,15 @@ export default function App() {
               </div>
             )}
           </div>
+
+          {needOutHint && (
+            <div className="flex items-center gap-2 rounded-md border-2 border-zinc-900 bg-white px-3 py-2 text-xs text-zinc-900">
+              <AlertTriangle size={14} className="shrink-0" />
+              <span>
+                请先在上方第 <b>3</b> 步选择「输出文件夹」，再点复制。
+              </span>
+            </div>
+          )}
 
           {(status === "copying" || (progress && progress.done < progress.total)) &&
             progress && (

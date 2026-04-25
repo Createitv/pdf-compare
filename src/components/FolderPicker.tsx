@@ -8,16 +8,31 @@ interface Props {
   value: string | null;
   onChange: (path: string) => void;
   disabled?: boolean;
+  highlight?: boolean;
 }
 
-export function FolderPicker({ index, label, value, onChange, disabled }: Props) {
+export function FolderPicker({
+  index,
+  label,
+  value,
+  onChange,
+  disabled,
+  highlight,
+}: Props) {
   async function pick() {
     const p = await pickDirectory();
     if (p) onChange(p);
   }
 
   return (
-    <div className="flex items-center gap-3 rounded-lg border border-zinc-200 bg-white p-3">
+    <div
+      className={cn(
+        "flex items-center gap-3 rounded-lg border bg-white p-3 transition",
+        highlight
+          ? "animate-pulse border-zinc-900 ring-2 ring-zinc-900 ring-offset-2"
+          : "border-zinc-200",
+      )}
+    >
       <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-zinc-900 text-white">
         <span className="font-mono text-sm">{index}</span>
       </div>
