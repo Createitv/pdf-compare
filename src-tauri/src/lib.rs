@@ -1,5 +1,7 @@
 use pdfcmp_algo::{compare, copy};
+use serde::Serialize;
 use std::path::PathBuf;
+use tauri::{AppHandle, Emitter};
 
 #[tauri::command]
 fn compare(all_dir: String, sent_dir: String) -> Result<compare::CompareResult, String> {
@@ -14,10 +16,32 @@ fn compare(all_dir: String, sent_dir: String) -> Result<compare::CompareResult, 
     Ok(compare::compare_dirs(&a, &b))
 }
 
+#[derive(Clone, Serialize)]
+struct CopyProgress {
+    done: usize,
+    total: usize,
+    current: String,
+}
+
 #[tauri::command]
-fn copy_missing(files: Vec<String>, out_dir: String) -> Result<copy::CopyReport, String> {
+fn copy_missing(
+    app: AppHandle,
+    files: Vec<String>,
+    out_dir: String,
+) -> Result<copy::CopyReport, String> {
     let out = PathBuf::from(&out_dir);
-    copy::copy_files(&files, &out).map_err(|e| e.to_string())
+    let app_for_cb = app.clone();
+    copy::copy_files(&files, &out, move |done, total, current| {
+        let _ = app_for_cb.emit(
+            "copy-progress",
+            CopyProgress {
+                done,
+                total,
+                current: current.to_string(),
+            },
+        );
+    })
+    .map_err(|e| e.to_string())
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]

@@ -1,12 +1,14 @@
-import { useMemo, useState } from "react";
-import { ArrowRight, Copy, Loader2, Play } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { ArrowRight, CheckCircle2, Copy, Loader2, Play } from "lucide-react";
 import { FolderPicker } from "@/components/FolderPicker";
 import { ResultList } from "@/components/ResultList";
 import { cn } from "@/lib/cn";
 import {
   compare as cmpInvoke,
   copyMissing,
+  onCopyProgress,
   type CompareResult,
+  type CopyProgress,
   type CopyReport,
 } from "@/lib/tauri";
 
@@ -19,16 +21,33 @@ export default function App() {
   const [status, setStatus] = useState<Status>("idle");
   const [result, setResult] = useState<CompareResult | null>(null);
   const [copyReport, setCopyReport] = useState<CopyReport | null>(null);
+  const [progress, setProgress] = useState<CopyProgress | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [successAt, setSuccessAt] = useState<number>(0);
+  const copyCountRef = useRef(0);
+  const successTimerRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    let unlisten: (() => void) | null = null;
+    onCopyProgress((p) => setProgress(p)).then((u) => {
+      unlisten = u;
+    });
+    return () => {
+      if (unlisten) unlisten();
+    };
+  }, []);
 
   const canCompare = !!allDir && !!sentDir && status === "idle";
-  const canCopy = !!result && result.missing.length > 0 && !!outDir && status === "idle";
+  const canCopy =
+    !!result && result.missing.length > 0 && !!outDir && status === "idle";
 
   async function runCompare() {
     if (!allDir || !sentDir) return;
     setStatus("comparing");
     setError(null);
     setCopyReport(null);
+    setProgress(null);
+    copyCountRef.current = 0;
     try {
       const r = await cmpInvoke(allDir, sentDir);
       setResult(r);
@@ -41,12 +60,28 @@ export default function App() {
 
   async function runCopy() {
     if (!result || !outDir) return;
+    if (copyCountRef.current > 0) {
+      const ok = window.confirm(
+        "本次会话已经复制过一次。是否再次复制？\n\n（已存在的文件会被自动跳过）",
+      );
+      if (!ok) return;
+    }
+
     setStatus("copying");
     setError(null);
+    setCopyReport(null);
+    setProgress({ done: 0, total: result.missing.length, current: "" });
     try {
       const paths = result.missing.map((m) => m.abs_path);
       const r = await copyMissing(paths, outDir);
       setCopyReport(r);
+      copyCountRef.current += 1;
+      setSuccessAt(Date.now());
+      if (successTimerRef.current) window.clearTimeout(successTimerRef.current);
+      successTimerRef.current = window.setTimeout(
+        () => setSuccessAt(0),
+        4000,
+      ) as unknown as number;
     } catch (e) {
       setError(String(e));
     } finally {
@@ -54,7 +89,11 @@ export default function App() {
     }
   }
 
-  const stats = useMemo(() => result?.stats, [result]);
+  const stats = result?.stats;
+  const pct =
+    progress && progress.total > 0
+      ? Math.round((progress.done / progress.total) * 100)
+      : 0;
 
   return (
     <div className="flex h-screen flex-col bg-zinc-50">
@@ -133,37 +172,55 @@ export default function App() {
                 <Stat label="左" value={stats.total_left} />
                 <Stat label="右" value={stats.total_right} />
                 <Stat label="缺失" value={stats.missing_count} highlight />
-                <Stat label="异常" value={stats.anomaly_count} highlight={stats.anomaly_count > 0} />
               </div>
             )}
           </div>
+
+          {(status === "copying" || (progress && progress.done < progress.total)) &&
+            progress && (
+              <div className="rounded-md border border-zinc-200 bg-white px-3 py-2.5">
+                <div className="mb-1.5 flex items-center justify-between font-mono text-xs">
+                  <span className="truncate text-zinc-600" title={progress.current}>
+                    {progress.current || "准备中…"}
+                  </span>
+                  <span className="ml-3 shrink-0 text-zinc-900">
+                    {progress.done} / {progress.total} ({pct}%)
+                  </span>
+                </div>
+                <div className="h-1.5 overflow-hidden rounded-full bg-zinc-100">
+                  <div
+                    className="h-full bg-zinc-900 transition-all duration-150"
+                    style={{ width: `${pct}%` }}
+                  />
+                </div>
+              </div>
+            )}
+
+          {successAt > 0 && copyReport && (
+            <div className="flex items-center gap-2 rounded-md border border-zinc-900 bg-zinc-900 px-3 py-2 text-xs text-white">
+              <CheckCircle2 size={14} />
+              <span>
+                复制成功！已复制 {copyReport.copied} 个文件
+                {copyReport.skipped > 0 && `，跳过 ${copyReport.skipped} 个已存在`}
+                {copyReport.failed.length > 0 &&
+                  `，失败 ${copyReport.failed.length} 个`}
+              </span>
+            </div>
+          )}
 
           {error && (
             <div className="rounded-md border border-zinc-900 bg-zinc-900 px-3 py-2 text-xs text-white">
               错误：{error}
             </div>
           )}
-          {copyReport && (
-            <div className="rounded-md border border-zinc-200 bg-white px-3 py-2 font-mono text-xs text-zinc-700">
-              已复制 {copyReport.copied} 个文件
-              {copyReport.failed.length > 0 && `，${copyReport.failed.length} 个失败`}
-            </div>
-          )}
         </section>
 
-        <section className="grid min-h-0 grid-cols-1 gap-4 md:grid-cols-2">
+        <section className="grid min-h-0 grid-cols-1 gap-4">
           <ResultList
             title="缺失清单"
             count={result?.missing.length ?? 0}
             entries={result?.missing ?? []}
             emptyText={result ? "无缺失" : "尚未对比"}
-          />
-          <ResultList
-            title="异常清单（前缀完全无对应）"
-            count={result?.anomalies.length ?? 0}
-            entries={result?.anomalies ?? []}
-            emptyText={result ? "无异常" : "尚未对比"}
-            tone="warn"
           />
         </section>
       </main>
@@ -183,7 +240,9 @@ function Stat({
   return (
     <span className="inline-flex items-center gap-1.5">
       <span className="text-zinc-400">{label}</span>
-      <span className={highlight ? "font-semibold text-zinc-900" : "text-zinc-700"}>{value}</span>
+      <span className={highlight ? "font-semibold text-zinc-900" : "text-zinc-700"}>
+        {value}
+      </span>
     </span>
   );
 }

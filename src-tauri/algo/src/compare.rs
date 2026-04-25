@@ -19,13 +19,11 @@ pub struct Stats {
     pub total_left: usize,
     pub total_right: usize,
     pub missing_count: usize,
-    pub anomaly_count: usize,
 }
 
 #[derive(Debug, Serialize)]
 pub struct CompareResult {
     pub missing: Vec<FileEntry>,
-    pub anomalies: Vec<FileEntry>,
     pub stats: Stats,
 }
 
@@ -33,28 +31,18 @@ pub fn extract_key(filename: &str) -> Option<String> {
     KEY_RE.captures(filename).map(|c| c[1].to_string())
 }
 
-pub fn extract_prefix(key: &str) -> Option<String> {
-    let mut iter = key.splitn(3, '-');
-    let a = iter.next()?;
-    let b = iter.next()?;
-    Some(format!("{a}-{b}"))
-}
-
 fn is_pdf(name: &str) -> bool {
-    let lower = name.to_ascii_lowercase();
-    lower.ends_with(".pdf")
+    name.to_ascii_lowercase().ends_with(".pdf")
 }
 
 struct ScanIndex {
     keys: HashSet<String>,
-    prefixes: HashSet<String>,
     by_key: BTreeMap<String, Vec<FileEntry>>,
     total: usize,
 }
 
 fn scan(dir: &Path) -> ScanIndex {
     let mut keys = HashSet::new();
-    let mut prefixes = HashSet::new();
     let mut by_key: BTreeMap<String, Vec<FileEntry>> = BTreeMap::new();
     let mut total = 0usize;
 
@@ -73,9 +61,6 @@ fn scan(dir: &Path) -> ScanIndex {
         let Some(key) = extract_key(name) else {
             continue;
         };
-        if let Some(prefix) = extract_prefix(&key) {
-            prefixes.insert(prefix);
-        }
         keys.insert(key.clone());
         by_key.entry(key.clone()).or_default().push(FileEntry {
             key,
@@ -86,7 +71,6 @@ fn scan(dir: &Path) -> ScanIndex {
 
     ScanIndex {
         keys,
-        prefixes,
         by_key,
         total,
     }
@@ -97,21 +81,8 @@ pub fn compare_dirs(all_dir: &Path, sent_dir: &Path) -> CompareResult {
     let right = scan(sent_dir);
 
     let mut missing: Vec<FileEntry> = Vec::new();
-    let mut anomalies: Vec<FileEntry> = Vec::new();
-
     for (key, files) in &left.by_key {
-        let prefix = extract_prefix(key);
-        let prefix_seen = prefix
-            .as_ref()
-            .map(|p| right.prefixes.contains(p))
-            .unwrap_or(false);
-        let key_seen = right.keys.contains(key);
-
-        if !prefix_seen {
-            for f in files {
-                anomalies.push(f.clone());
-            }
-        } else if !key_seen {
+        if !right.keys.contains(key) {
             for f in files {
                 missing.push(f.clone());
             }
@@ -122,14 +93,9 @@ pub fn compare_dirs(all_dir: &Path, sent_dir: &Path) -> CompareResult {
         total_left: left.total,
         total_right: right.total,
         missing_count: missing.len(),
-        anomaly_count: anomalies.len(),
     };
 
-    CompareResult {
-        missing,
-        anomalies,
-        stats,
-    }
+    CompareResult { missing, stats }
 }
 
 #[cfg(test)]
@@ -142,10 +108,6 @@ mod tests {
             extract_key("40-03-001--32120-100-CWR-23016-H1A20-N(031)_Sht_1.PDF"),
             Some("40-03-001".to_string())
         );
-        assert_eq!(
-            extract_key("40-03-018--32120-50-LD-22030-A21K-CJ40(031)_Sht_3.PDF"),
-            Some("40-03-018".to_string())
-        );
     }
 
     #[test]
@@ -155,46 +117,32 @@ mod tests {
     }
 
     #[test]
-    fn extract_prefix_basic() {
-        assert_eq!(extract_prefix("40-03-001"), Some("40-03".to_string()));
-        assert_eq!(extract_prefix("40-99-12"), Some("40-99".to_string()));
-    }
-
-    #[test]
-    fn compare_finds_missing_and_anomalies() {
-        let tmp = tempdir();
+    fn compare_finds_only_missing() {
+        let tmp = std::env::temp_dir().join(format!("pdfcmp-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&tmp);
         let all = tmp.join("all");
         let sent = tmp.join("sent");
         std::fs::create_dir_all(&all).unwrap();
         std::fs::create_dir_all(&sent).unwrap();
 
+        let touch = |dir: &Path, name: &str| {
+            std::fs::write(dir.join(name), b"%PDF").unwrap();
+        };
+
         touch(&all, "40-03-001--x_Sht_1.PDF");
         touch(&all, "40-03-001--x_Sht_2.PDF");
         touch(&sent, "40-03-001--x_Sht_1.PDF");
-
         touch(&all, "40-03-002--y_Sht_1.PDF");
         touch(&all, "40-99-001--z_Sht_1.PDF");
 
         let r = compare_dirs(&all, &sent);
         let missing_keys: HashSet<_> = r.missing.iter().map(|e| e.key.clone()).collect();
-        let anomaly_keys: HashSet<_> = r.anomalies.iter().map(|e| e.key.clone()).collect();
 
         assert!(missing_keys.contains("40-03-002"));
+        assert!(missing_keys.contains("40-99-001"));
         assert!(!missing_keys.contains("40-03-001"));
-        assert!(anomaly_keys.contains("40-99-001"));
         assert_eq!(r.stats.total_left, 4);
         assert_eq!(r.stats.total_right, 1);
-    }
-
-    fn tempdir() -> std::path::PathBuf {
-        let mut p = std::env::temp_dir();
-        p.push(format!("pdfcmp-{}", std::process::id()));
-        let _ = std::fs::remove_dir_all(&p);
-        std::fs::create_dir_all(&p).unwrap();
-        p
-    }
-
-    fn touch(dir: &std::path::Path, name: &str) {
-        std::fs::write(dir.join(name), b"%PDF-1.4\n%%EOF").unwrap();
+        assert_eq!(r.stats.missing_count, 2);
     }
 }
