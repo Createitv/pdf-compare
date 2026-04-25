@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { ArrowRight, CheckCircle2, Copy, Loader2, Play } from "lucide-react";
+import { AlertTriangle, ArrowRight, CheckCircle2, Copy, Loader2, Play } from "lucide-react";
 import { FolderPicker } from "@/components/FolderPicker";
 import { ResultList } from "@/components/ResultList";
 import { cn } from "@/lib/cn";
@@ -172,6 +172,11 @@ export default function App() {
                 <Stat label="左" value={stats.total_left} />
                 <Stat label="右" value={stats.total_right} />
                 <Stat label="缺失" value={stats.missing_count} highlight />
+                <Stat
+                  label="多余"
+                  value={stats.extra_count}
+                  highlight={stats.extra_count > 0}
+                />
               </div>
             )}
           </div>
@@ -208,6 +213,15 @@ export default function App() {
             </div>
           )}
 
+          {result && result.extra.length > 0 && (
+            <div className="flex items-start gap-2 rounded-md border border-zinc-900 bg-white px-3 py-2 text-xs text-zinc-900">
+              <AlertTriangle size={14} className="mt-0.5 shrink-0" />
+              <span>
+                已发送文件夹中有 <b>{result.extra.length}</b> 个文件在「全部文件夹」中没有对应项 —— 这意味着两侧并非严格的「子集」关系，可能选错了文件夹或文件命名规则不同。详情见下方「多余清单」。
+              </span>
+            </div>
+          )}
+
           {error && (
             <div className="rounded-md border border-zinc-900 bg-zinc-900 px-3 py-2 text-xs text-white">
               错误：{error}
@@ -215,12 +229,19 @@ export default function App() {
           )}
         </section>
 
-        <section className="grid min-h-0 grid-cols-1 gap-4">
+        <section className="grid min-h-0 grid-cols-1 gap-4 md:grid-cols-2">
           <ResultList
-            title="缺失清单"
+            title="缺失清单（左有右无）"
             count={result?.missing.length ?? 0}
             entries={result?.missing ?? []}
             emptyText={result ? "无缺失" : "尚未对比"}
+          />
+          <ResultList
+            title="多余清单（右有左无）"
+            count={result?.extra.length ?? 0}
+            entries={result?.extra ?? []}
+            emptyText={result ? "无多余 ✓ 已发送是全部的子集" : "尚未对比"}
+            tone={result && result.extra.length > 0 ? "warn" : "neutral"}
           />
         </section>
       </main>

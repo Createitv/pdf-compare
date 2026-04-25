@@ -19,11 +19,13 @@ pub struct Stats {
     pub total_left: usize,
     pub total_right: usize,
     pub missing_count: usize,
+    pub extra_count: usize,
 }
 
 #[derive(Debug, Serialize)]
 pub struct CompareResult {
     pub missing: Vec<FileEntry>,
+    pub extra: Vec<FileEntry>,
     pub stats: Stats,
 }
 
@@ -89,13 +91,27 @@ pub fn compare_dirs(all_dir: &Path, sent_dir: &Path) -> CompareResult {
         }
     }
 
+    let mut extra: Vec<FileEntry> = Vec::new();
+    for (key, files) in &right.by_key {
+        if !left.keys.contains(key) {
+            for f in files {
+                extra.push(f.clone());
+            }
+        }
+    }
+
     let stats = Stats {
         total_left: left.total,
         total_right: right.total,
         missing_count: missing.len(),
+        extra_count: extra.len(),
     };
 
-    CompareResult { missing, stats }
+    CompareResult {
+        missing,
+        extra,
+        stats,
+    }
 }
 
 #[cfg(test)]
@@ -134,15 +150,23 @@ mod tests {
         touch(&sent, "40-03-001--x_Sht_1.PDF");
         touch(&all, "40-03-002--y_Sht_1.PDF");
         touch(&all, "40-99-001--z_Sht_1.PDF");
+        // extra in sent, not in all
+        touch(&sent, "40-77-007--rogue_Sht_1.PDF");
 
         let r = compare_dirs(&all, &sent);
         let missing_keys: HashSet<_> = r.missing.iter().map(|e| e.key.clone()).collect();
+        let extra_keys: HashSet<_> = r.extra.iter().map(|e| e.key.clone()).collect();
 
         assert!(missing_keys.contains("40-03-002"));
         assert!(missing_keys.contains("40-99-001"));
         assert!(!missing_keys.contains("40-03-001"));
-        assert_eq!(r.stats.total_left, 4);
-        assert_eq!(r.stats.total_right, 1);
         assert_eq!(r.stats.missing_count, 2);
+
+        assert!(extra_keys.contains("40-77-007"));
+        assert!(!extra_keys.contains("40-03-001"));
+        assert_eq!(r.stats.extra_count, 1);
+
+        assert_eq!(r.stats.total_left, 4);
+        assert_eq!(r.stats.total_right, 2);
     }
 }

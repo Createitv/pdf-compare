@@ -12,10 +12,12 @@ export interface Stats {
   total_left: number;
   total_right: number;
   missing_count: number;
+  extra_count: number;
 }
 
 export interface CompareResult {
   missing: FileEntry[];
+  extra: FileEntry[];
   stats: Stats;
 }
 
